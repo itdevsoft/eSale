@@ -1,0 +1,78 @@
+<project name="eSale" default="build.war" basedir=".">
+
+    <!-- base properties.  Should not be used directly.  Compose them to make what you want -->
+    <property name="build.output.dir" value="${basedir}/bin"/>
+	
+	<property name="name" value="ROOT"/>
+	
+    <!-- where source files are located -->
+    <property name="base.src.dir" value="${basedir}/src"/>
+
+	<property name="web.dir" value="${basedir}/WebContent"/>
+	
+     <!-- where dependencies (build and runtime) live -->
+    <property name="lib.dir" value="${web.dir}/WEB-INF/lib"/>
+	
+	<property name="tomcat-loc" value="lib"/>
+	
+	
+    <path id="build.classpath">
+        <fileset refid="jar.fileset"/>
+        <fileset dir="${tomcat-loc}" >
+            <include name="*.jar"/>
+        </fileset>
+    </path>
+	
+    <path id="run.classpath">
+        <path refid="build.classpath"/>
+       <pathelement location="${build.output.dir}"/>
+    </path>
+
+    <fileset id="jar.fileset" dir="${lib.dir}">
+        <include name="**/*"/>
+    </fileset>
+	
+	<target name="clean">
+		<delete dir="${build.output.dir}" failonerror="false"/>
+		<delete dir="${web.dir}/WEB-INF/classes" failonerror="false"/>
+	</target>
+	
+	<target name="_init" depends="clean">
+		<mkdir dir="${build.output.dir}"/>
+		<mkdir dir="${web.dir}/WEB-INF/classes"/>
+	</target>
+
+	
+	<target name="compile" depends="_init">
+		<echo message="compiling source" />
+		<javac srcdir="${base.src.dir}" destdir="${build.output.dir}" deprecation="on"  debug="on">
+			<include name="**/*.java"/>
+			<exclude name="**/Test*.java"/>
+			<exclude name="**/*Test.java"/>
+			<classpath>
+				<path refid="build.classpath"/>
+			</classpath>
+		</javac>
+		
+		<copy todir="${build.output.dir}">
+			<fileset dir="${base.src.dir}" >
+				<include name="**/*.properties"/>
+				<include name="**/*.xml"/>
+			</fileset>
+		</copy>	
+
+       <copy todir="${web.dir}/WEB-INF/classes" overwrite="true">
+        	<fileset dir="${build.output.dir}"/>
+    	</copy>
+       
+		
+	</target>
+	
+	<target name="build.war" depends="compile">
+		<echo message="building web archive" />
+        <jar destfile="${name}.war">
+            <fileset dir="${web.dir}" />            		
+        </jar>		
+	</target>
+	
+</project>

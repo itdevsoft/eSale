@@ -1,0 +1,1062 @@
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 9.0.5
+-- Dumped by pg_dump version 9.1.4
+-- Started on 2012-07-15 10:12:29
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+--
+-- TOC entry 507 (class 2612 OID 11574)
+-- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: postgres
+--
+
+CREATE OR REPLACE PROCEDURAL LANGUAGE plpgsql;
+
+
+ALTER PROCEDURAL LANGUAGE plpgsql OWNER TO postgres;
+
+SET search_path = public, pg_catalog;
+
+--
+-- TOC entry 504 (class 1247 OID 26178)
+-- Dependencies: 5 158
+-- Name: nested_category_record; Type: TYPE; Schema: public; Owner: postgres
+--
+
+CREATE TYPE nested_category_record AS (
+	nested_category_id bigint,
+	nested_category_type character varying(255),
+	category_id bigint,
+	category_name character varying(255),
+	diff_factor integer,
+	image_path character varying(255),
+	category_lft integer,
+	category_rgt integer,
+	category_depth bigint
+);
+
+
+ALTER TYPE public.nested_category_record OWNER TO postgres;
+
+--
+-- TOC entry 174 (class 1255 OID 26182)
+-- Dependencies: 5 507
+-- Name: add_new_node(integer, integer, text, integer, text, text); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION add_new_node(integer, integer, text, integer, text, text) RETURNS bigint
+    LANGUAGE plpgsql
+    AS $_$
+	
+		DECLARE
+		edgeid integer;
+		nestedcatid bigint;
+		catid bigint;
+		BEGIN
+		IF $1 > 0 THEN
+			SELECT * from get_nested_category_edge_id('rgt',$1) INTO edgeid;
+		ELSE
+			SELECT * from get_nested_category_edge_id('lft',$2) INTO edgeid;
+		END IF;
+		IF edgeid = NULL THEN
+			edgeid=0;
+		END IF;
+		UPDATE nested_category SET rgt = rgt + 2 WHERE type = $5 AND rgt > edgeid;
+		UPDATE nested_category SET lft = lft + 2 WHERE type = $5 AND lft > edgeid;
+		SELECT nextval ('nested_category_sq') INTO nestedcatid; 
+		SELECT nextval ('category_sq') INTO catid;
+		INSERT INTO category(category_id,name,diff_factor,image_path) VALUES(catid,$3,$4,$6);
+		INSERT INTO nested_category(nested_category_id,category_id, lft, rgt,type) VALUES(nestedcatid,catid,edgeid + 1, edgeid + 2, $5);
+
+		
+		return nestedcatid;
+		END;$_$;
+
+
+ALTER FUNCTION public.add_new_node(integer, integer, text, integer, text, text) OWNER TO postgres;
+
+--
+-- TOC entry 175 (class 1255 OID 26183)
+-- Dependencies: 507 5
+-- Name: delete_nodes(integer, text); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION delete_nodes(integer, text) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $_$
+	
+		DECLARE
+		lftId integer;
+		rgtId integer;
+		widthId integer;
+		rec nested_category_record;
+		BEGIN
+		SELECT INTO lftId,rgtId 
+		lft,rgt 
+		FROM nested_category
+		WHERE nested_category_id = $1;
+		widthId := rgtId - lftId + 1;
+		for rec in SELECT nested_category_id,category_id 
+			FROM nested_category 
+			WHERE type = $2 
+			AND lft BETWEEN lftId AND rgtId
+		loop
+		DELETE FROM nested_category_sale_item WHERE nested_category_id=rec.nested_category_id;
+		DELETE FROM nested_category WHERE nested_category_id=rec.nested_category_id;
+		DELETE FROM category WHERE category_id=rec.category_id;
+		end loop;
+		
+		UPDATE nested_category SET rgt = rgt - widthId WHERE type = $2 AND rgt > rgtId;
+		UPDATE nested_category SET lft = lft - widthId WHERE type = $2 AND lft > rgtId;	
+		return true;
+		END;$_$;
+
+
+ALTER FUNCTION public.delete_nodes(integer, text) OWNER TO postgres;
+
+--
+-- TOC entry 171 (class 1255 OID 26179)
+-- Dependencies: 504 5 507
+-- Name: get_immediate_subordinates(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION get_immediate_subordinates(integer) RETURNS SETOF nested_category_record
+    LANGUAGE plpgsql
+    AS $_$
+declare
+r nested_category_record;
+depth integer;
+begin
+SELECT * from get_nested_category_depth($1) INTO depth;
+for r in SELECT node.nested_category_id AS nested_category_id,node.type AS nested_category_type,main_category.category_id AS category_id,main_category.name AS category_name,main_category.diff_factor AS diff_factor,main_category.image_path AS image_path,node.lft AS category_lft,node.rgt AS category_rgt, (COUNT(parent.category_id) - (depth+1)) AS category_depth
+FROM nested_category AS node,
+        nested_category AS parent,
+        nested_category AS sub_parent,
+	category AS main_category,
+        (
+                SELECT node.category_id, (COUNT(parent.category_id) - 1)
+                FROM nested_category AS node,
+                        nested_category AS parent
+                WHERE node.type = parent.type
+			AND node.lft BETWEEN parent.lft AND parent.rgt
+                        AND node.category_id = $1
+                GROUP BY node.category_id
+                --ORDER BY node.lft
+        )AS sub_tree
+WHERE node.type = parent.type
+	AND node.type = sub_parent.type
+	AND node.lft BETWEEN parent.lft AND parent.rgt
+        AND node.lft BETWEEN sub_parent.lft AND sub_parent.rgt
+        AND sub_parent.category_id = sub_tree.category_id
+	AND node.category_id = main_category.category_id
+	AND node.category_id <> $1
+GROUP BY node.nested_category_id,node.type,main_category.category_id,main_category.name,main_category.diff_factor,main_category.image_path,node.lft,node.rgt
+HAVING (COUNT(parent.category_id) - (depth+1)) <= 1
+ORDER BY node.lft
+loop
+return next r;
+end loop;
+return;
+end;$_$;
+
+
+ALTER FUNCTION public.get_immediate_subordinates(integer) OWNER TO postgres;
+
+--
+-- TOC entry 170 (class 1255 OID 26175)
+-- Dependencies: 5 507
+-- Name: get_nested_category_depth(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION get_nested_category_depth(integer) RETURNS integer
+    LANGUAGE plpgsql
+    AS $_$
+	
+		DECLARE
+		retId integer;
+		BEGIN
+		SELECT (COUNT(parent.category_id) - 1) INTO retId
+                FROM nested_category AS node,
+                        nested_category AS parent
+                WHERE node.type = parent.type 
+			AND node.lft BETWEEN parent.lft AND parent.rgt
+                        AND node.category_id = $1
+                GROUP BY node.category_id;
+		
+		RETURN retId;
+		END;$_$;
+
+
+ALTER FUNCTION public.get_nested_category_depth(integer) OWNER TO postgres;
+
+--
+-- TOC entry 173 (class 1255 OID 26181)
+-- Dependencies: 507 5
+-- Name: get_nested_category_edge_id(text, integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION get_nested_category_edge_id(text, integer) RETURNS integer
+    LANGUAGE plpgsql
+    AS $_$
+	
+		DECLARE
+		retId integer;
+		BEGIN
+		IF $1 = 'lft' THEN
+			SELECT INTO retId lft FROM nested_category WHERE nested_category_id =$2;
+		ELSE
+			SELECT INTO retId rgt FROM nested_category WHERE nested_category_id =$2;
+		END IF;
+		IF retId IS NULL THEN
+			RETURN 0;
+		ELSE 
+			RETURN retId;
+		END IF;
+		END;$_$;
+
+
+ALTER FUNCTION public.get_nested_category_edge_id(text, integer) OWNER TO postgres;
+
+--
+-- TOC entry 172 (class 1255 OID 26180)
+-- Dependencies: 507 504 5
+-- Name: get_single_path(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION get_single_path(integer) RETURNS SETOF nested_category_record
+    LANGUAGE plpgsql
+    AS $_$
+declare
+r nested_category_record;
+begin
+for r in SELECT parent.nested_category_id AS nested_category_id,parent.type AS nested_category_type,main_category.category_id AS category_id,main_category.name AS category_name,main_category.diff_factor AS diff_factor,main_category.image_path AS image_path,parent.lft AS category_lft,parent.rgt AS category_rgt
+FROM nested_category AS node,
+        nested_category AS parent,
+        category AS main_category
+        WHERE node.type = parent.type
+	AND node.lft BETWEEN parent.lft AND parent.rgt
+	AND parent.category_id=main_category.category_id
+        AND node.nested_category_id = $1
+ORDER BY parent.lft
+loop
+return next r;
+end loop;
+return;
+end;$_$;
+
+
+ALTER FUNCTION public.get_single_path(integer) OWNER TO postgres;
+
+--
+-- TOC entry 143 (class 1259 OID 26061)
+-- Dependencies: 5
+-- Name: category_sq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE category_sq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.category_sq OWNER TO postgres;
+
+--
+-- TOC entry 1888 (class 0 OID 0)
+-- Dependencies: 143
+-- Name: category_sq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('category_sq', 63, true);
+
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+-- TOC entry 144 (class 1259 OID 26063)
+-- Dependencies: 1841 5
+-- Name: category; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE category (
+    category_id bigint DEFAULT nextval('category_sq'::regclass) NOT NULL,
+    name character varying(255) NOT NULL,
+    diff_factor integer,
+    image_path character varying(255)
+);
+
+
+ALTER TABLE public.category OWNER TO postgres;
+
+--
+-- TOC entry 156 (class 1259 OID 26152)
+-- Dependencies: 5
+-- Name: locationcontact; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE locationcontact (
+    locationcontactid bigint NOT NULL,
+    addressline1 character varying(256) NOT NULL,
+    addressline2 character varying(256),
+    city character varying(126),
+    postcode character varying(126),
+    statecode character varying(126),
+    countrycode character varying(126),
+    prioriylevel integer
+);
+
+
+ALTER TABLE public.locationcontact OWNER TO postgres;
+
+--
+-- TOC entry 152 (class 1259 OID 26120)
+-- Dependencies: 5
+-- Name: locationcontact_sq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE locationcontact_sq
+    START WITH 68
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.locationcontact_sq OWNER TO postgres;
+
+--
+-- TOC entry 1890 (class 0 OID 0)
+-- Dependencies: 152
+-- Name: locationcontact_sq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('locationcontact_sq', 70, true);
+
+
+--
+-- TOC entry 145 (class 1259 OID 26072)
+-- Dependencies: 5
+-- Name: nested_category_sq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE nested_category_sq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.nested_category_sq OWNER TO postgres;
+
+--
+-- TOC entry 1891 (class 0 OID 0)
+-- Dependencies: 145
+-- Name: nested_category_sq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('nested_category_sq', 63, true);
+
+
+--
+-- TOC entry 146 (class 1259 OID 26074)
+-- Dependencies: 1842 5
+-- Name: nested_category; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE nested_category (
+    nested_category_id bigint DEFAULT nextval('nested_category_sq'::regclass) NOT NULL,
+    category_id bigint NOT NULL,
+    lft integer NOT NULL,
+    rgt integer NOT NULL,
+    type character varying(126) NOT NULL
+);
+
+
+ALTER TABLE public.nested_category OWNER TO postgres;
+
+--
+-- TOC entry 149 (class 1259 OID 26097)
+-- Dependencies: 1845 5
+-- Name: nested_category_sale_item; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE nested_category_sale_item (
+    sale_item_id bigint NOT NULL,
+    nested_category_id bigint NOT NULL,
+    display_name character varying(255),
+    description character varying(510),
+    price numeric DEFAULT 0,
+    active boolean
+);
+
+
+ALTER TABLE public.nested_category_sale_item OWNER TO postgres;
+
+--
+-- TOC entry 142 (class 1259 OID 25869)
+-- Dependencies: 5
+-- Name: retid; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE retid (
+    "?column?" bigint
+);
+
+
+ALTER TABLE public.retid OWNER TO postgres;
+
+--
+-- TOC entry 147 (class 1259 OID 26085)
+-- Dependencies: 5
+-- Name: sale_item_sq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE sale_item_sq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.sale_item_sq OWNER TO postgres;
+
+--
+-- TOC entry 1894 (class 0 OID 0)
+-- Dependencies: 147
+-- Name: sale_item_sq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('sale_item_sq', 3, true);
+
+
+--
+-- TOC entry 148 (class 1259 OID 26087)
+-- Dependencies: 1843 1844 5
+-- Name: sale_item; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE sale_item (
+    sale_item_id bigint DEFAULT nextval('sale_item_sq'::regclass) NOT NULL,
+    name character varying(255) NOT NULL,
+    description character varying(510),
+    enabled boolean,
+    image_path character varying(255),
+    base_price numeric DEFAULT 0,
+    price_for character varying(100)
+);
+
+
+ALTER TABLE public.sale_item OWNER TO postgres;
+
+--
+-- TOC entry 153 (class 1259 OID 26122)
+-- Dependencies: 5
+-- Name: securityuser; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE securityuser (
+    userid bigint NOT NULL,
+    othernames character varying(255),
+    lastname character varying(255),
+    gender character(1),
+    createdon date,
+    lastupdatedon date,
+    title character varying(255),
+    enabled boolean,
+    password character varying(255),
+    username character varying(255) NOT NULL,
+    email character varying(255)
+);
+
+
+ALTER TABLE public.securityuser OWNER TO postgres;
+
+--
+-- TOC entry 150 (class 1259 OID 26116)
+-- Dependencies: 5
+-- Name: securityuser_sq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE securityuser_sq
+    START WITH 64
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.securityuser_sq OWNER TO postgres;
+
+--
+-- TOC entry 1897 (class 0 OID 0)
+-- Dependencies: 150
+-- Name: securityuser_sq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('securityuser_sq', 66, true);
+
+
+--
+-- TOC entry 157 (class 1259 OID 26160)
+-- Dependencies: 5
+-- Name: user_locationcontact; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE user_locationcontact (
+    locationcontactid bigint NOT NULL,
+    userid bigint NOT NULL
+);
+
+
+ALTER TABLE public.user_locationcontact OWNER TO postgres;
+
+--
+-- TOC entry 155 (class 1259 OID 26137)
+-- Dependencies: 5
+-- Name: user_voicecontact; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE user_voicecontact (
+    voicecontactid bigint NOT NULL,
+    userid bigint NOT NULL
+);
+
+
+ALTER TABLE public.user_voicecontact OWNER TO postgres;
+
+--
+-- TOC entry 154 (class 1259 OID 26132)
+-- Dependencies: 5
+-- Name: voicecontact; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+--
+
+CREATE TABLE voicecontact (
+    voicecontactid bigint NOT NULL,
+    contacttype character varying(25),
+    contactnumber character varying(125) NOT NULL,
+    prioritylevel integer
+);
+
+
+ALTER TABLE public.voicecontact OWNER TO postgres;
+
+--
+-- TOC entry 151 (class 1259 OID 26118)
+-- Dependencies: 5
+-- Name: voicecontact_sq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE voicecontact_sq
+    START WITH 60
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.voicecontact_sq OWNER TO postgres;
+
+--
+-- TOC entry 1898 (class 0 OID 0)
+-- Dependencies: 151
+-- Name: voicecontact_sq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('voicecontact_sq', 62, true);
+
+
+--
+-- TOC entry 1874 (class 0 OID 26063)
+-- Dependencies: 144
+-- Data for Name: category; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY category (category_id, name, diff_factor, image_path) FROM stdin;
+1	DELIVERY	0	\N
+2	SALE_ITEMS	0	\N
+3	NSW	0	\N
+4	VIC	0	\N
+5	ACT	0	\N
+6	Sydney	0	\N
+7	Melbourne	0	\N
+8	Canbera	0	\N
+9	FRUITS	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+10	VEGITABLES	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+11	MEAT	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+12	SEAFOODS	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+14	Citrus	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+13	Apples	2	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+15	Bananas	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+16	Grapes	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+17	HOME	0	
+18	OFFICE	0	
+19	NSW	1	
+20	VIC	0	
+21	SYDNEY	1	
+22	DELI	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+23	Asparagus & Artichokes	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+24	Asparagus & Artichokes	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+25	Asparagus & Artichokes	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+26	Beans & Peas	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+27	Broccoli & Cauliflower	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+28	Onions & Garlic	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+29	Lettuce	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+30	Carrots	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+31	Cabbage	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+32	Tomatoes	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+33	Leafy Greens	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+35	Red Apples	2	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+34	Green Apples	2	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+36	Tangerines	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+37	Asparagus	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+38	Artichokes	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+39	DELIVERY SCHEDULE	0	\N
+40	Monday	0	
+42	Wednesday	0	
+43	Thursday	0	
+44	Friday	0	
+45	Saturday	0	
+46	Sunday	0	
+48	Schedule 2 7PM_9PM	0	
+49	Schedule 3 9PM_11PM	0	
+50	Schedule 1 7PM_9PM	0	
+51	Schedule 2 9PM_11PM	0	
+52	NSW	0	
+53	Sydney	0	
+54	OFFICE	0	
+55	HOME	0	
+56	OFFICE & HOME	0	
+59	Bananas	0	
+60	Apples	0	
+61	VEGITABLES	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+62	Tomatoes	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+63	Cabbage	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+47	Schedule 1 4PM_7PM	0	
+41	Tuesday 03 July 2012	0	
+57	FRUITS	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+58	DAIRY	0	C:/Chanaka/Projects/eSaleImages/saleItems/Category_<id>.jpg
+\.
+
+
+--
+-- TOC entry 1881 (class 0 OID 26152)
+-- Dependencies: 156
+-- Data for Name: locationcontact; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY locationcontact (locationcontactid, addressline1, addressline2, city, postcode, statecode, countrycode, prioriylevel) FROM stdin;
+3400	Waterview Gardens	3/2 Broadview Av	Gosford	2250	NSW	AU	1
+3451	3/2 Broadview Av		Gosford	2250	NSW	AU	1
+3500	3/2 Broadview Av		Gosford	2250	NSW	AU	1
+3501	3/2 Broadview Av		Gosford	2250	NSW	AU	1
+\.
+
+
+--
+-- TOC entry 1875 (class 0 OID 26074)
+-- Dependencies: 146
+-- Data for Name: nested_category; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY nested_category (nested_category_id, category_id, lft, rgt, type) FROM stdin;
+39	39	1	16	DELIVERY SCHEDULE
+1	1	1	16	DELIVERY
+18	18	10	15	DELIVERY
+52	52	11	14	DELIVERY
+53	53	12	13	DELIVERY
+41	41	2	7	DELIVERY SCHEDULE
+43	43	8	9	DELIVERY SCHEDULE
+44	44	10	11	DELIVERY SCHEDULE
+45	45	12	13	DELIVERY SCHEDULE
+46	46	14	15	DELIVERY SCHEDULE
+51	51	5	6	DELIVERY SCHEDULE
+50	50	3	4	DELIVERY SCHEDULE
+2	2	1	20	ITEM
+59	59	4	5	ITEM
+57	57	3	8	ITEM
+54	54	2	11	ITEM
+58	58	9	10	ITEM
+60	60	6	7	ITEM
+62	62	14	15	ITEM
+19	19	3	6	DELIVERY
+17	17	2	9	DELIVERY
+55	55	12	19	ITEM
+61	61	13	18	ITEM
+20	20	7	8	DELIVERY
+21	21	4	5	DELIVERY
+63	63	16	17	ITEM
+\.
+
+
+--
+-- TOC entry 1877 (class 0 OID 26097)
+-- Dependencies: 149
+-- Data for Name: nested_category_sale_item; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY nested_category_sale_item (sale_item_id, nested_category_id, display_name, description, price, active) FROM stdin;
+101	21	GRANNY SMITH APPLES, 4-PACK	The tartness of a Granny Smith piques your palate, but then its deep sweetness comes out to balance the flavor. It's one of the few apples that stays autumn-crisp almost all year long. A prime eating apple that holds its shape and flavor in pies.	3.03	t
+103	21	RED DELICIOUS APPLES, 4-PACK, ORGANIC	Sweetness is the first thing that hits you when you bite into a Red Delicious, which is why kids  even really picky kids  like them. A survey of lunch boxes would place the Red Delicious in first place. Its crispness satisfies those of us who want some crunch in our apple, while extra juiciness delivers even more sweet flavor. These apples rarely bruise, so take one along on a hike or picnic. 	4.04	t
+102	21	RED JACKET ORCHARDS GOLDEN DELICIOUS APPLES, 4-PACK	The pure taste of the harvest season. The texture is medium-crisp, the flavor mildly sweet. The aroma is pure apple and pure autumn. If you bite into a Golden Delicious, it smells just like a country store full of fresh-picked apples. No need to peel; the skin is only slightly more tart than the pale yellow flesh. 	2.02	t
+104	21	CRISPIN APPLES, 4-PACK, LOCAL	The Crispin, also called Mutsu, is a cross between the firm-fleshed, tart Japanese Indo apple and the sweet, all-American favorite Golden Delicious. Its creamy flesh is full of succulent juice and the delicate skin has a nice tang. Crispins are equally great as a snack and in applesauce, pies, and tarts. 	2.02	t
+50	21	royal gala		3.03	t
+100	21	GALA APPLES, 4-PACK	The light golden streaks of color on the outside of the Gala hint at the honey-floral taste on the inside. We think there's a touch of banana in there, too. Sweet with a medium-crisp bite, the Gala looks like a beautiful old-time fruit-stand apple. Its delicate taste gets a boost from the slightly tart skin. 	5.04	t
+150	62	Roma Tomato 	sdsdsdsd	2	t
+150	21	Roma Tomato 		2.02	t
+\.
+
+
+--
+-- TOC entry 1873 (class 0 OID 25869)
+-- Dependencies: 142
+-- Data for Name: retid; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY retid ("?column?") FROM stdin;
+0
+\.
+
+
+--
+-- TOC entry 1876 (class 0 OID 26087)
+-- Dependencies: 148
+-- Data for Name: sale_item; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY sale_item (sale_item_id, name, description, enabled, image_path, base_price, price_for) FROM stdin;
+50	royal gala		t	C:/Chanaka/Projects/eSaleImages/saleItems/<id>.jpg	3	per Kilo
+100	GALA APPLES, 4-PACK	The light golden streaks of color on the outside of the Gala hint at the honey-floral taste on the inside. We think there's a touch of banana in there, too. Sweet with a medium-crisp bite, the Gala looks like a beautiful old-time fruit-stand apple. Its delicate taste gets a boost from the slightly tart skin. 	t	C:/Chanaka/Projects/eSaleImages/saleItems/<id>.jpg	4	per Kilo
+101	GRANNY SMITH APPLES, 4-PACK	The tartness of a Granny Smith piques your palate, but then its deep sweetness comes out to balance the flavor. It's one of the few apples that stays autumn-crisp almost all year long. A prime eating apple that holds its shape and flavor in pies.	t	C:/Chanaka/Projects/eSaleImages/saleItems/<id>.jpg	3	per Kilo
+103	RED DELICIOUS APPLES, 4-PACK, ORGANIC	Sweetness is the first thing that hits you when you bite into a Red Delicious, which is why kids  even really picky kids  like them. A survey of lunch boxes would place the Red Delicious in first place. Its crispness satisfies those of us who want some crunch in our apple, while extra juiciness delivers even more sweet flavor. These apples rarely bruise, so take one along on a hike or picnic. 	t	C:/Chanaka/Projects/eSaleImages/saleItems/<id>.jpg	4	per Kilo
+104	CRISPIN APPLES, 4-PACK, LOCAL	The Crispin, also called Mutsu, is a cross between the firm-fleshed, tart Japanese Indo apple and the sweet, all-American favorite Golden Delicious. Its creamy flesh is full of succulent juice and the delicate skin has a nice tang. Crispins are equally great as a snack and in applesauce, pies, and tarts. 	t	C:/Chanaka/Projects/eSaleImages/saleItems/<id>.jpg	2	per Pkt
+102	RED JACKET ORCHARDS GOLDEN DELICIOUS APPLES, 4-PACK	The pure taste of the harvest season. The texture is medium-crisp, the flavor mildly sweet. The aroma is pure apple and pure autumn. If you bite into a Golden Delicious, it smells just like a country store full of fresh-picked apples. No need to peel; the skin is only slightly more tart than the pale yellow flesh. 	t	C:/Chanaka/Projects/eSaleImages/saleItems/<id>.jpg	2	per Kilo
+150	Roma Tomato 		t	C:/Chanaka/Projects/eSaleImages/saleItems/<id>.jpg	2	per Kilo
+\.
+
+
+--
+-- TOC entry 1878 (class 0 OID 26122)
+-- Dependencies: 153
+-- Data for Name: securityuser; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY securityuser (userid, othernames, lastname, gender, createdon, lastupdatedon, title, enabled, password, username, email) FROM stdin;
+3200	bbbb	ddddd	M	\N	\N	Miss	t	pass	chanaka	chanaka.usl@gmail.com
+3251	Chanaka	Silva	M	\N	\N	Mr	t	pass	chanaka123	chanaka123@yahoo.com
+3300	Dushantha	Peries	M	\N	\N	Mr	t	pass	dushantha	sud_silva@yahoo.com
+\.
+
+
+--
+-- TOC entry 1882 (class 0 OID 26160)
+-- Dependencies: 157
+-- Data for Name: user_locationcontact; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY user_locationcontact (locationcontactid, userid) FROM stdin;
+3451	3251
+3400	3200
+3501	3300
+\.
+
+
+--
+-- TOC entry 1880 (class 0 OID 26137)
+-- Dependencies: 155
+-- Data for Name: user_voicecontact; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY user_voicecontact (voicecontactid, userid) FROM stdin;
+3055	3251
+3053	3251
+3054	3251
+3002	3200
+3001	3200
+3000	3200
+3100	3300
+3102	3300
+3101	3300
+\.
+
+
+--
+-- TOC entry 1879 (class 0 OID 26132)
+-- Dependencies: 154
+-- Data for Name: voicecontact; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY voicecontact (voicecontactid, contacttype, contactnumber, prioritylevel) FROM stdin;
+3000	Office	90120887	3
+3001	Mobile	0001123	1
+3002	Home	2221334	2
+3053	Home	12346789	2
+3054	Mobile	56783345	1
+3055	Office	90120887	3
+3100	Mobile	56783345	1
+3102	Home	12346789	2
+3101	Office	90120887	3
+\.
+
+
+--
+-- TOC entry 1847 (class 2606 OID 26071)
+-- Dependencies: 144 144
+-- Name: category_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY category
+    ADD CONSTRAINT category_pkey PRIMARY KEY (category_id);
+
+
+--
+-- TOC entry 1863 (class 2606 OID 26159)
+-- Dependencies: 156 156
+-- Name: locationcontact_pk; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY locationcontact
+    ADD CONSTRAINT locationcontact_pk PRIMARY KEY (locationcontactid);
+
+
+--
+-- TOC entry 1849 (class 2606 OID 26079)
+-- Dependencies: 146 146
+-- Name: nested_category_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY nested_category
+    ADD CONSTRAINT nested_category_pkey PRIMARY KEY (nested_category_id);
+
+
+--
+-- TOC entry 1853 (class 2606 OID 26105)
+-- Dependencies: 149 149 149
+-- Name: nested_category_sale_item_pk; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY nested_category_sale_item
+    ADD CONSTRAINT nested_category_sale_item_pk PRIMARY KEY (sale_item_id, nested_category_id);
+
+
+--
+-- TOC entry 1851 (class 2606 OID 26096)
+-- Dependencies: 148 148
+-- Name: sale_item_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY sale_item
+    ADD CONSTRAINT sale_item_pkey PRIMARY KEY (sale_item_id);
+
+
+--
+-- TOC entry 1855 (class 2606 OID 26129)
+-- Dependencies: 153 153
+-- Name: securityuser_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY securityuser
+    ADD CONSTRAINT securityuser_pkey PRIMARY KEY (userid);
+
+
+--
+-- TOC entry 1857 (class 2606 OID 26131)
+-- Dependencies: 153 153
+-- Name: securityuser_username_key; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY securityuser
+    ADD CONSTRAINT securityuser_username_key UNIQUE (username);
+
+
+--
+-- TOC entry 1865 (class 2606 OID 26164)
+-- Dependencies: 157 157 157
+-- Name: user_locationcontact_pk; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY user_locationcontact
+    ADD CONSTRAINT user_locationcontact_pk PRIMARY KEY (locationcontactid, userid);
+
+
+--
+-- TOC entry 1861 (class 2606 OID 26141)
+-- Dependencies: 155 155 155
+-- Name: user_voicecontact_pk; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY user_voicecontact
+    ADD CONSTRAINT user_voicecontact_pk PRIMARY KEY (voicecontactid, userid);
+
+
+--
+-- TOC entry 1859 (class 2606 OID 26136)
+-- Dependencies: 154 154
+-- Name: voicecontact_pk; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+--
+
+ALTER TABLE ONLY voicecontact
+    ADD CONSTRAINT voicecontact_pk PRIMARY KEY (voicecontactid);
+
+
+--
+-- TOC entry 1866 (class 2606 OID 26080)
+-- Dependencies: 146 144 1846
+-- Name: nested_category_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY nested_category
+    ADD CONSTRAINT nested_category_fk FOREIGN KEY (category_id) REFERENCES category(category_id);
+
+
+--
+-- TOC entry 1867 (class 2606 OID 26106)
+-- Dependencies: 1850 148 149
+-- Name: nested_category_sale_item_fk1; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY nested_category_sale_item
+    ADD CONSTRAINT nested_category_sale_item_fk1 FOREIGN KEY (sale_item_id) REFERENCES sale_item(sale_item_id);
+
+
+--
+-- TOC entry 1868 (class 2606 OID 26111)
+-- Dependencies: 149 1848 146
+-- Name: nested_category_sale_item_fk2; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY nested_category_sale_item
+    ADD CONSTRAINT nested_category_sale_item_fk2 FOREIGN KEY (nested_category_id) REFERENCES nested_category(nested_category_id);
+
+
+--
+-- TOC entry 1871 (class 2606 OID 26165)
+-- Dependencies: 153 157 1854
+-- Name: user_locationcontact_fk1; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY user_locationcontact
+    ADD CONSTRAINT user_locationcontact_fk1 FOREIGN KEY (userid) REFERENCES securityuser(userid);
+
+
+--
+-- TOC entry 1872 (class 2606 OID 26170)
+-- Dependencies: 156 1862 157
+-- Name: user_locationcontact_fk2; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY user_locationcontact
+    ADD CONSTRAINT user_locationcontact_fk2 FOREIGN KEY (locationcontactid) REFERENCES locationcontact(locationcontactid);
+
+
+--
+-- TOC entry 1869 (class 2606 OID 26142)
+-- Dependencies: 155 1854 153
+-- Name: user_voicecontact_fk1; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY user_voicecontact
+    ADD CONSTRAINT user_voicecontact_fk1 FOREIGN KEY (userid) REFERENCES securityuser(userid);
+
+
+--
+-- TOC entry 1870 (class 2606 OID 26147)
+-- Dependencies: 154 155 1858
+-- Name: user_voicecontact_fk2; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY user_voicecontact
+    ADD CONSTRAINT user_voicecontact_fk2 FOREIGN KEY (voicecontactid) REFERENCES voicecontact(voicecontactid);
+
+
+--
+-- TOC entry 1887 (class 0 OID 0)
+-- Dependencies: 5
+-- Name: public; Type: ACL; Schema: -; Owner: postgres
+--
+
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM postgres;
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+
+
+--
+-- TOC entry 1889 (class 0 OID 0)
+-- Dependencies: 144
+-- Name: category; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE category FROM PUBLIC;
+REVOKE ALL ON TABLE category FROM postgres;
+GRANT ALL ON TABLE category TO postgres;
+GRANT ALL ON TABLE category TO PUBLIC;
+
+
+--
+-- TOC entry 1892 (class 0 OID 0)
+-- Dependencies: 146
+-- Name: nested_category; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE nested_category FROM PUBLIC;
+REVOKE ALL ON TABLE nested_category FROM postgres;
+GRANT ALL ON TABLE nested_category TO postgres;
+GRANT ALL ON TABLE nested_category TO PUBLIC;
+
+
+--
+-- TOC entry 1893 (class 0 OID 0)
+-- Dependencies: 149
+-- Name: nested_category_sale_item; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE nested_category_sale_item FROM PUBLIC;
+REVOKE ALL ON TABLE nested_category_sale_item FROM postgres;
+GRANT ALL ON TABLE nested_category_sale_item TO postgres;
+GRANT ALL ON TABLE nested_category_sale_item TO PUBLIC;
+
+
+--
+-- TOC entry 1895 (class 0 OID 0)
+-- Dependencies: 148
+-- Name: sale_item; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE sale_item FROM PUBLIC;
+REVOKE ALL ON TABLE sale_item FROM postgres;
+GRANT ALL ON TABLE sale_item TO postgres;
+GRANT ALL ON TABLE sale_item TO PUBLIC;
+
+
+--
+-- TOC entry 1896 (class 0 OID 0)
+-- Dependencies: 153
+-- Name: securityuser; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE securityuser FROM PUBLIC;
+REVOKE ALL ON TABLE securityuser FROM postgres;
+GRANT ALL ON TABLE securityuser TO postgres;
+GRANT ALL ON TABLE securityuser TO PUBLIC;
+
+
+-- Completed on 2012-07-15 10:12:31
+
+--
+-- PostgreSQL database dump complete
+--
+

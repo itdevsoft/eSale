@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This file should go to the tomcat/conf/Catalina/localhost/ folder to server the Sale Item Images-->
+<Context path = "/eSaleImages" docBase="C:/Chanaka/Projects/eSaleImages/saleItems/">
+</Context>
+

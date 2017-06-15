@@ -1,0 +1,58 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+	http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+        http://www.springframework.org/schema/context 
+        http://www.springframework.org/schema/context/spring-context-3.0.xsd">
+
+	<context:component-scan base-package="com.eservice,com.esale" />
+	
+	<bean id="dataSource"
+		class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+		<property name="driverClassName">
+			<value>${jdbc.driver.className}</value>
+		</property>
+		<property name="url">
+			<value>${jdbc.url}</value>
+		</property>
+		<property name="username">
+			<value>${jdbc.username}</value>
+		</property>
+		<property name="password">
+			<value>${jdbc.password}</value>
+		</property>
+	</bean>
+	 
+	<!-- <bean id="dataSource" class="org.springframework.jndi.JndiObjectFactoryBean">
+		<property name="jndiName">
+			<value>java:comp/env/jdbc/eSaledb</value>
+		</property>
+	</bean>
+	-->
+	<bean id="sessionFactory"
+		class="org.springframework.orm.hibernate3.annotation.AnnotationSessionFactoryBean">
+		<property name="dataSource" ref="dataSource" />
+		<property name="packagesToScan" value="com.eservice.core.beans" />
+		<property name="hibernateProperties">
+			<props>
+				<!-- SQL dialect -->
+				<prop key="hibernate.dialect">${jdbc.hibernate.dialect}</prop>
+				<!-- Enable Hibernate's automatic session context management -->
+				<prop key="hibernate.current_session_context_class">thread</prop>
+				<!-- Drop and re-create the database schema on startup -->
+				<prop key="hibernate.hbm2ddl.auto">none</prop>
+				<!-- Echo all executed SQL to stdout -->
+				<prop key="hibernate.show_sql">true</prop>
+				<prop key="hibernate.cache.use_query_cache">true</prop> 
+				<prop key="hibernate.cache.use_second_level_cache">true</prop>
+            	<prop key="hibernate.cache.provider_class">net.sf.ehcache.hibernate.SingletonEhCacheProvider</prop>
+			</props>
+		</property>
+	</bean>
+	<bean id="transactionManager"
+		class="org.springframework.orm.hibernate3.HibernateTransactionManager">
+		<property name="sessionFactory">
+			<ref bean="sessionFactory" />
+		</property>
+	</bean>
+</beans>

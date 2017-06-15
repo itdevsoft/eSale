@@ -1,0 +1,71 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- NEVER MODIFY THE SERVER PORTS -->
+<Server port="12716" shutdown="SHUTDOWN">
+  <Listener className="org.apache.catalina.core.AprLifecycleListener" SSLEngine="off" />
+  <Listener className="org.apache.catalina.core.JasperListener" />
+  <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener" />
+  <Listener className="org.apache.catalina.mbeans.GlobalResourcesLifecycleListener" />
+  <Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener" />
+
+  <GlobalNamingResources>
+<Resource name="UserDatabase" auth="Container" type="org.apache.catalina.UserDatabase" description="User database that can be updated and saved" factory="org.apache.catalina.users.MemoryUserDatabaseFactory"  pathname="conf/tomcat-users.xml" />
+<Resource auth="Container" description="employConnect database connection"  name="jdbc/employConnectdb" type="javax.sql.DataSource" password="m19ra71on" driverClassName="com.mysql.jdbc.Driver" maxIdle="4" maxWait="5000" validationQuery="" username="chanaka_empcon" url="jdbc:mysql://mysql3000.mochahost.com:3306/chanaka_employconnect?autoReconnect=true" maxActive="15" removeAbandoned="true" removeAbandonedTimeout="300" logAbandoned="true"/>
+<Resource auth="Container" description="eSale database connection"  name="jdbc/eSaledb" type="javax.sql.DataSource" password="ch4n4k4esa1e" driverClassName="org.postgresql.Driver" maxIdle="4" maxWait="5000" validationQuery="" username="chanaka_esalenew" url="jdbc:postgresql://localhost:5432/chanaka_esale" maxActive="15" removeAbandoned="true" removeAbandonedTimeout="300" logAbandoned="true"/>
+<Environment name="Server.properties" type="java.lang.String" value="/home/chanaka/etc/itdevsoft.properties"/>	</GlobalNamingResources>
+
+  <Service name="Catalina">
+<!-- NEVER MODIFY THE SERVER PORTS -->
+    <Connector port="12715" protocol="HTTP/1.1" 
+               connectionTimeout="20000" 
+               redirectPort="8443" />
+<!-- NEVER MODIFY THE SERVER PORTS -->
+<!--    <Connector port="" protocol="HTTP/1.1" SSLEnabled="true"
+               maxThreads="150" scheme="https" secure="true"
+               clientAuth="false" sslProtocol="TLS" keystorePass="importkey"/> -->
+    <Engine name="Catalina" defaultHost="localhost">
+
+      <Realm className="org.apache.catalina.realm.LockOutRealm">
+        <Realm className="org.apache.catalina.realm.UserDatabaseRealm"
+               resourceName="UserDatabase"/>
+      </Realm>
+
+	<Host name="itdevsoft.com" appBase="/home/chanaka/jvm/apache-tomcat-7.0.57/domains/itdevsoft.com" unpackWARs="true" autoDeploy="true"   xmlValidation="false" xmlNamespaceAware="false">
+    <Context path="/probe" debug="5" docBase="/home/chanaka/jvm/apache-tomcat-7.0.57/webapps/probe" privileged="true" unpackWARs="true" autoDeploy="true" />
+    <Alias>www.itdevsoft.com</Alias>
+    <Alias>itdevsoft.com.mocha6007.mochahost.com</Alias>
+    <Alias>www.itdevsoft.com.mocha6007.mochahost.com</Alias>
+</Host>
+
+<Host name="esale.itdevsoft.com" appBase="/home/chanaka/jvm/apache-tomcat-7.0.57/domains/esale.itdevsoft.com" unpackWARs="true" autoDeploy="true"   xmlValidation="false" xmlNamespaceAware="false">
+    <Context path="/probe" debug="5" docBase="/home/chanaka/jvm/apache-tomcat-7.0.57/webapps/probe" privileged="true" unpackWARs="true" autoDeploy="true" />
+    <Alias>www.esale.itdevsoft.com</Alias>
+    <Alias>esale.itdevsoft.com.mocha6007.mochahost.com</Alias>
+    <Alias>www.esale.itdevsoft.com.mocha6007.mochahost.com</Alias>
+</Host>
+
+<Host name="mailservice.itdevsoft.com" appBase="/home/chanaka/jvm/apache-tomcat-7.0.57/domains/mailservice.itdevsoft.com" unpackWARs="true" autoDeploy="true"   xmlValidation="false" xmlNamespaceAware="false">
+    <Context path="/probe" debug="5" docBase="/home/chanaka/jvm/apache-tomcat-7.0.57/webapps/probe" privileged="true" unpackWARs="true" autoDeploy="true" />
+    <Alias>www.mailservice.itdevsoft.com</Alias>
+    <Alias>mailservice.itdevsoft.com.mocha6007.mochahost.com</Alias>
+    <Alias>www.mailservice.itdevsoft.com.mocha6007.mochahost.com</Alias>
+</Host>
+
+<Host name="starfin.com.au" appBase="/home/chanaka/jvm/apache-tomcat-7.0.57/domains/starfin.com.au" unpackWARs="true" autoDeploy="true"   xmlValidation="false" xmlNamespaceAware="false">
+    <Context path="/probe" debug="5" docBase="/home/chanaka/jvm/apache-tomcat-7.0.57/webapps/probe" privileged="true" unpackWARs="true" autoDeploy="true" />
+    <Alias>www.starfin.com.au</Alias>
+    <Alias>starfin.com.au.mocha6007.mochahost.com</Alias>
+    <Alias>www.starfin.com.au.mocha6007.mochahost.com</Alias>
+</Host>
+
+<Host name="auz-connect.com.au" appBase="/home/chanaka/jvm/apache-tomcat-7.0.57/domains/auz-connect.com.au" unpackWARs="true" autoDeploy="true"   xmlValidation="false" xmlNamespaceAware="false">
+    <Context path="/probe" debug="5" docBase="/home/chanaka/jvm/apache-tomcat-7.0.57/webapps/probe" privileged="true" unpackWARs="true" autoDeploy="true" />
+    <Alias>www.auz-connect.com.au</Alias>
+    <Alias>auz-connect.com.au.mocha6007.mochahost.com</Alias>
+    <Alias>www.auz-connect.com.au.mocha6007.mochahost.com</Alias>
+</Host>
+
+
+
+    </Engine>
+  </Service>
+</Server>

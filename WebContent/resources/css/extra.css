@@ -1,0 +1,55 @@
+.linebreak-25 {
+	height: 25px;
+}
+
+.linebreak-10 {
+	height: 10px;
+}
+
+label {
+	font-size: 12px;
+	font-family: Verdana, Arial, Helvetica, Sans-Serif, sans-serif;
+	font-weight: normal;
+	font-weight: bold;
+}
+
+label.fieldsetLabel {
+	font-size: 12px;
+	font-family: Verdana, Arial, Helvetica, Sans-Serif, sans-serif;
+	font-weight: normal;
+	font-weight: bold;
+	color: #5078aa;
+}
+
+div.formline {
+	clear: left;
+	display: block;
+	width: 354px;
+	margin: 5px 0 0 0;
+}
+
+div.formline label {
+	display: block;
+	float: left;
+	width: 150px;
+	text-align: left;
+}
+
+.styleTable {
+	border-collapse: separate;
+}
+
+.styleTable TD {
+	font-weight: normal !important;
+	padding: .4em;
+	border-top-width: 0px !important;
+}
+
+.styleTable TH {
+	text-align: center;
+	padding: .8em .4em;
+}
+
+.styleTable TD.first,.styleTable TH.first {
+	border-left-width: 0px !important;
+}

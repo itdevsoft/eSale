@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<sitemesh>
+  <mapping path="/system/*" decorator="/pages/pagetemplate.jsp"/>
+  <mapping path="/welcome" decorator="/pages/pagetemplate.jsp"/>
+  <mapping path="/error-*" decorator="/pages/pagetemplate.jsp"/>
+</sitemesh>

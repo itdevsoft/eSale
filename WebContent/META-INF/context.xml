@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Context path="/employ-connect">
+	<ResourceLink name="jdbc/eSaledb" global="jdbc/eSaledb" type="javax.sql.DataSource" />
+	<ResourceLink name="Server.properties" global="Server.properties" type="java.lang.String" />
+</Context>

@@ -1,0 +1,90 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:util="http://www.springframework.org/schema/util"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+		http://www.springframework.org/schema/beans     
+        http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+        http://www.springframework.org/schema/context 
+        http://www.springframework.org/schema/context/spring-context-3.0.xsd
+		http://www.springframework.org/schema/util
+		http://www.springframework.org/schema/util/spring-util-3.0.xsd"
+		default-autowire="byName">
+
+	<context:component-scan  base-package="com.eservice,com.esale" />
+	
+	<bean
+		class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+		<property name="prefix">
+			<value>/pages/</value>
+		</property>
+		<property name="suffix">
+			<value>.jsp</value>
+		</property>
+	</bean>
+
+	<bean id="messageSource"
+		class="org.springframework.context.support.ReloadableResourceBundleMessageSource">
+		<!--  <property name="basename" value="classpath:messages" />  -->
+		<property name="basenames">
+			<value>/WEB-INF/displaymessages</value>
+		</property>
+		<property name="cacheSeconds">
+			<value>60</value>
+		</property>
+		<property name="fallbackToSystemLocale" value="false" />
+	</bean>
+
+	<bean id="propertyConfigurer"
+		class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+		<property name="locations">
+			<list>
+				<value>/configuration.properties</value>
+			</list>
+		</property>
+	</bean>
+	<!-- Configure the multipart resolver -->
+	<bean id="multipartResolver"
+		class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+	</bean>
+	<!-- Bean definitions -->
+	<bean id="SaleItem" class="com.eservice.core.beans.SaleItem">
+		<property name="enabled" value="true" />
+	</bean>
+	<bean id="NestedCategory" class="com.eservice.core.beans.NestedCategory"  >
+		<property name="id" value="-1"></property>
+		<property name="category" ref="Category"></property>
+	</bean>
+	<bean id="Category" class="com.eservice.core.beans.Category" >
+		<property name="id" value="-1"></property>
+		<property name="diffFactor" value="0"></property>
+	</bean>
+	<bean id="NestedCategorySaleItemCompoundKey" class="com.eservice.core.beans.NestedCategorySaleItemCompoundKey" >
+		<property name="saleItem" ref="SaleItem"></property>
+		<property name="nestedCategory" ref="NestedCategory"></property>
+	</bean>
+	<bean id="NestedCategorySaleItem" class="com.eservice.core.beans.NestedCategorySaleItem" >
+		<property name="compoundKey" ref="NestedCategorySaleItemCompoundKey"></property>
+	</bean>
+	<util:map id="priceForList" value-type="java.lang.String" key-type="java.lang.String" >
+		<entry key="per Kilo" value="per Kilo"></entry>
+		<entry key="per Each" value="per Each"></entry>
+		<entry key="per Pkt" value="per Pkt"></entry>
+		<entry key="per Dozen" value="per Dozen"></entry>
+		<entry key="per Box" value="per Box"></entry>
+		<entry key="per Sq/ft" value="per Sq/ft"></entry>
+	</util:map>
+	
+	<util:list id="searchByList">
+	<value>Name</value>
+	<value>Description</value>
+	</util:list>
+	
+	<util:map id="systemHierarchySetupList" key-type="java.lang.Long" value-type="java.lang.String" >
+		<entry key="36" value="DELIVERY LOCATION"></entry>
+		<entry key="37" value="SALE_ITEMS"></entry>
+		<entry key="38" value="DELIVERY SCHEDULE"></entry>
+		<entry key="39" value="DELIVERY_METHOD"></entry>
+		<entry key="40" value="PAYMENT_METHOD"></entry>
+	</util:map>
+</beans>
